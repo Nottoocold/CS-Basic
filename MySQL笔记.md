@@ -276,8 +276,82 @@ type字段从好到坏：
 - like 以%开头导致索引失效
 - OR 前后存在非索引的列，则索引失效
 
-
-
 ## 9. 事务
 
-ACID，分别是原子性(Atomicity)，一致性(Consistency)，隔离性(Isolation)，
+**ACID**，分别是：
+
+- **原子性(Atomicity)**，指事务是一个不可分割的单位，要么都成功，要么都失败。Wiki：事务作为一个整体被执行，包含在其中的对数据库的操作要么全部被执行，要么都不执行。
+
+- **一致性(Consistency)**，是[数据库系统](https://zh.m.wikipedia.org/wiki/%E6%95%B0%E6%8D%AE%E5%BA%93%E7%B3%BB%E7%BB%9F "数据库系统")的一项要求：任何数据库事务修改数据必须满足定义好的规则，包括[数据完整性](https://zh.m.wikipedia.org/wiki/%E6%95%B0%E6%8D%AE%E5%AE%8C%E6%95%B4%E6%80%A7 "数据完整性")（约束）、[级联回滚](https://zh.m.wikipedia.org/wiki/%E7%BA%A7%E8%81%94%E5%9B%9E%E6%BB%9A "级联回滚")、[触发器](https://zh.m.wikipedia.org/wiki/%E8%A7%A6%E5%8F%91%E5%99%A8_(%E6%95%B0%E6%8D%AE%E5%BA%93) "触发器 (数据库)")等。
+
+- **隔离性(Isolation)**，定义了[数据库](https://zh.m.wikipedia.org/wiki/%E6%95%B0%E6%8D%AE%E5%BA%93 "数据库")系统中一个事务中操作的结果在何时以何种方式对其他[并发](https://zh.m.wikipedia.org/wiki/%E5%B9%B6%E5%8F%91 "并发")事务操作可见。
+
+- **持久性（Durability）**，已被提交的事务对数据库的修改应该永久保存在数据库中。
+
+总结：ACID是事务的四大特性，在这四个特性中，原子性是基础，隔离性是手段，一致性是约束条件，持久性是最终目的。
+数据库事务，本质上就是数据库设计者为了方便起见，把需要保证ACID的一个或者多个数据库操作称为一个事务。
+
+### 9.1 数据并发问题
+
+#### 9.1.1 隔离级别
+
+- 脏写，指事务A修改了事务B未提交的数据，则发生了脏写。
+- 脏读，指事务A读取到了事务B已经修改但是还未提交的数据，即事务A读取到了临时数据。
+- 不可重复读，事务A读取了一个字段，事务B修改了一个字段，之后事务A读取到了不同值，若事务B又修改了该字段，那么事务A又可能读取到不同的值。
+- 幻读，事务A读取到了一些字段，之后事务B添加了几行，事务A再次读取时发现记录数增加。
+
+MySQL支持的4种隔离级别：
+
+- read uncommited,只解决了脏写。
+- read commited，解决了脏读。
+- repeatable read，解决脏读，不可重复读。
+- SERIALIZABLE，串行化。
+- 都可以解决脏写。
+
+#### 9.1.2 MySQL的事务日志
+
+事务的四种特性中：
+
+- 隔离性是由锁机制解决的
+- 其他三种是通过Redo和Undo日志解决的
+  - Redo日志，重做日志，提供再写入操作，恢复提交事务的修改的页操作，用来保证事务的持久性。
+  - Undo日志，回滚日志，回滚行记录到某个版本，保证原子性和一致性。
+- Redo Log，由Innodb生成，记录的是“物理级别”上的页修改操作，比如页号，偏移量，数据的变化
+- Undo Log，由Innodb生成，记录的是“逻辑操作”，记录每个修改操作的**逆操作**，主要用于事务的回滚和一致性非锁定读（MVCC）。
+
+#### 9.1.3 Redo日志
+
+1. Redo日志的组成
+   
+   - 内存层面，MySQL服务器启动时，会申请一片内存空间，称为redo log buffer，可通过系统变量Innodb_log_buffer_size查看该缓冲区的大小（默认16MB）。这片连续的内存空间又被划分为若干连续的redo log block，默认每个512B。
+   - 磁盘层面，redo log file，是持久化的。
+
+2. Redo log的刷盘过程
+   ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/redo-log%E7%9A%84%E5%88%B7%E7%9B%98%E8%BF%87%E7%A8%8B.png)
+
+3. Redo log的刷新策略，系统变量Innodb_flush_log_at_trx_commit，可选值：
+   
+   - 0，每次事务提交时，不进行刷盘操作。(系统默认master thread 每隔1s同步一次)
+   - 1，每次提交时，都会进行刷盘（默认值）
+   - 2，每次事务提交时，都会把redo log buffer 中的内容提交到page cache，不进行同步，由os决定何时同步到磁盘
+
+#### 9.1.4 Undo日志
+
+redo log是事务持久性的保证，undo log是事务原子性的保证，在事务中更新数据的前置操作是先写undo log日志。
+
+undo log是“逻辑日志”，当数据在回滚时，只是逻辑上回滚，但是物理磁盘上数据的结构可能大相径庭。
+
+## 9.2 锁机制
+
+事务的隔离性由锁机制来实现。
+
+### 9.2.1 并发问题的解决方案
+
+- 读操作利用多版本并发控制，写操作加锁。
+  ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/readview.png)
+
+### 9.2.2 锁的分类(锁的粒度)
+
+- 表级锁
+- 页级锁
+- 行级锁
