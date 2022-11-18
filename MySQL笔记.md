@@ -262,12 +262,22 @@ EXPLAIN关键字语句输出的各个列的作用说明如下图所示
 
 - id号每个号码，表示一趟独立的查询，一个sql的查询趟数越少越好
 
-
-
 type字段从好到坏：
 
 **system > const > eq_ref > ref** > fulltext > ref_or_null > index_merge > unique_subquery > index_subquery > **range > index > ALL**
 
-
-
 ## 8. 索引优化与查询优化
+
+### 8.1 索引失效的场景
+
+- 不满足最左前缀匹配
+- where字句中范围条件要放在最后
+- != 或 <> 都不可以使用索引，is null 可使用，is not null 不可以使用
+- like 以%开头导致索引失效
+- OR 前后存在非索引的列，则索引失效
+
+
+
+## 9. 事务
+
+ACID，分别是原子性(Atomicity)，一致性(Consistency)，隔离性(Isolation)，
