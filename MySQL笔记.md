@@ -1,3 +1,5 @@
+[toc]
+---
 ## 1. 用户管理及权限管理
 
 命令行登陆参数
@@ -68,7 +70,12 @@ mysql是用一张权限表来控制权限的。mysql数据库，user表，db表�
 
 当角色赋予后，需要**激活**，
 
-- set default role all to user1,user2...;
+- set default [role_name] all to user1,user2...;
+- `系统变量activate_all_roles_on_login默认为OFF,set global .. = ON`
+
+#### 1.2.5 启动命令与选项组
+
+![](http://img.zqqiliyc.love/mysql/202212061845077.png)
 
 ## 2. Mysql的逻辑架构
 
@@ -209,8 +216,8 @@ select * from blog where match(title,content) against('查询字符')
 
 全文索引的是大量数据，最好先添加数据，再创建索引。
 
-- alter table add **[fulltext|unique] index** idx_name (col_name(len));
-- create index **[fulltext|unique]** idx_name on **table_name**(col_name); 
+- alter table add **[fulltext|unique] index** idx_name (col_name(len)[asc|desc]);
+- create index **[fulltext|unique]** idx_name on **table_name**(col_name(len)[asc|desc]); 
 
 ### 6.3 删除索引
 
@@ -252,6 +259,26 @@ select * from blog where match(title,content) against('查询字符')
 
 ## 7. EXPLAIN
 
+一些常用的性能参数如下
+
+![](http://img.zqqiliyc.love/mysql/202212071542866.png)
+
+通过
+
+```sql
+show status like '变量名'; // 查看指定的变量状态
+```
+
+统计SQL查询的执行成本`last_query_cost`。
+
+```sql
+slow_query_log=ON; // 开启慢查询日志功能
+long_query_time=10; // 设置>=10秒就是慢查询
+mysqladmin -u name -p flush-logs slow // 刷新慢查询日志
+```
+
+开启`profiling`变量为打开状态`set profiling = on`，后使用`show profiles`和`show profile [for query seq_num]`查看最近的查询资源消耗情况。
+
 EXPLAIN关键字语句输出的各个列的作用说明如下图所示
 
 ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/explain.png)
@@ -266,15 +293,86 @@ type字段从好到坏：
 
 **system > const > eq_ref > ref** > fulltext > ref_or_null > index_merge > unique_subquery > index_subquery > **range > index > ALL**
 
-## 8. 索引优化与查询优化
+### 7.1 EXPLAIN小结😊
+
++ EXPLAIN不考虑各种Cache。
++ EXPLAIN不能显示MySQL在执行查询时所作的优化工作。
++ EXPLAIN不会告诉你关于触发器、存储过程的信息或用户自定义函数对查询的影响情况。
++ 部分统计信息是估算的，并非精确值。
+
+### 7.2 EXPLAIN的进一步使用
+
+EXPLAIN有四种输出格式，分别是==传统格式，JSON格式，Tree格式以及可视化输出==。
+
+```sql
+EXPLAIN format = json|tree select statement;
+```
+
+### 7.3 分析优化器的执行计划：trace
+
+`OPTIMIZER_TRACE`可以跟踪优化器所作的各种决策。此功能默认关闭，打开方式如下
+
+```sql
+set optimizer_trace = 'enabled=on',end_markers_in_json=on;
+set optimizer_trace_max_mem_size=1000000;
+```
+
+## 8. 索引优化与查询优化😊
 
 ### 8.1 索引失效的场景
 
 - 不满足最左前缀匹配
-- where字句中范围条件要放在最后
+- where子句中范围条件要放在最后
 - != 或 <> 都不可以使用索引，is null 可使用，is not null 不可以使用
 - like 以%开头导致索引失效
 - OR 前后存在非索引的列，则索引失效
+
+### 8.2  关联查询的优化
+
++ 左外连接
+  + 给被驱动表的用于连接条件的字段添加索引。
+
+
++ 内连接
+  + 若连接条件中只能有一个字段有索引，则有索引的表充当被驱动表。
+  + 小表驱动大表，进一步说是每行数据越小越可能充当驱动表，因为`join_buffer_size`大小确定的情况下，数据行越小，buffer中能装的数据就越多。
+  + 为被驱动表匹配的条件增加索引(减少内层表的循环匹配次数)
+  + 增大`join_buffer_size`的大小
+  + 减少驱动表中不必要字段的查询
+  
+### 8.3 子查询优化
++ 能直接多表关联的，尽量使用多表关联
++ 不建议使用子查询，建议将子查询结合程序拆开或进行join查询
+
+### 8.4 排序优化
++ where子句条件加索引可避免全表扫描。
++ 在order by 子句加索引避免filesort排序。但有些情况下初心filesort不一定就性能低。
++ 尽量使用index完成order by排序。如果where和order by后面是相同的列就使用单列索引，否则考虑建立联合索引。
++ 无法使用index时，对filesort方式进行优化。
+  + filesort优化思路：
+  + 尝试提高`sort_buffer_size`的大小
+  + 尝试提高`max_length_for_sort_data`的大小
+  + `Order By`时`select *` 是大忌，最好只查询需要的字段即可
+
+### 8.5 Group By优化
+
+![](http://img.zqqiliyc.love/mysql/202212091517626.png)
+
+### 8.6 优化分页查询
+
+一般分页查询时，通过创建覆盖索引能过获得更好的性能。一个常见又非常头疼的问题就是`limit 2000000,10`，此时MySQL需要排序前2000000条数据，然后只取之后的10条数据，查询时排序的代价很大。
+
++ 优化思路1：在索引上完成排序操作，最后根据主键关联回表查询
+
+```sql
+SELECT * FROM stu s , (SELECT id FROM stu ORDER BY id LIMIT 2000000,10) tmp WHERE s.id = tmp.id
+```
+
++ 优化思路2：该方案适合主键自增的场景，可把limit查询转化成具体的某个位置的查询
+
+```sql
+SELECT * FROM stu s WHERE id > 2000000 LIMIT 10;
+```
 
 ## 9. 事务
 
@@ -295,18 +393,19 @@ type字段从好到坏：
 
 #### 9.1.1 隔离级别
 
-- 脏写，指事务A修改了事务B未提交的数据，则发生了脏写。
-- 脏读，指事务A读取到了事务B已经修改但是还未提交的数据，即事务A读取到了临时数据。
-- 不可重复读，事务A读取了一个字段，事务B修改了一个字段，之后事务A读取到了不同值，若事务B又修改了该字段，那么事务A又可能读取到不同的值。
-- 幻读，事务A读取到了一些字段，之后事务B添加了几行，事务A再次读取时发现记录数增加。
+事务的并发问题(严重性从高到低)：
 
-MySQL支持的4种隔离级别：
+- **脏写**，指事务A修改了事务B**未提交的数据**，则发生了脏写。
+- **脏读**，指事务A**读取到了**事务B已经修改但是**还未提交的数据**，即事务A读取到了临时数据。
+- **不可重复读**，事务A**读取**了某个字段，事务B了**更新**了那个字段，之后事务A**读取到了不同值**，若事务B又更新了该字段，那么事务A又可能读取到不同的值。
+- **幻读**，事务A读取到了一些字段，之后事务B添加了几行，事务A再次读取时发现**记录数增加**。
 
-- read uncommited,只解决了脏写。
-- read commited，解决了脏读。
-- repeatable read，解决脏读，不可重复读。
-- SERIALIZABLE，串行化。
-- 都可以解决脏写。
+MySQL支持的4种**隔离级别**：
+
+- ==READ UNCOMMITTED==，解决了脏写。
+- ==READ COMMITTED==，解决了脏写、脏读。
+- ==REPEATABLE READ==，解决脏写、脏读和不可重复读。
+- ==SERIALIZABLE==，串行化，最安全同时也是性能最差。
 
 #### 9.1.2 MySQL的事务日志
 
@@ -314,12 +413,17 @@ MySQL支持的4种隔离级别：
 
 - 隔离性是由锁机制解决的
 - 其他三种是通过Redo和Undo日志解决的
-  - Redo日志，重做日志，提供再写入操作，恢复提交事务的修改的页操作，用来保证事务的持久性。
-  - Undo日志，回滚日志，回滚行记录到某个版本，保证原子性和一致性。
+  - **Redo日志**，重做日志，提供再写入操作，恢复提交事务的修改的页操作，用来保证事务的持久性。
+  - **Undo日志**，回滚日志，回滚行记录到某个版本，保证原子性和一致性。
+
++ REDO和UNDO都可以视为是一种“恢复”操作。
+
 - Redo Log，由Innodb生成，记录的是“物理级别”上的页修改操作，比如页号，偏移量，数据的变化
 - Undo Log，由Innodb生成，记录的是“逻辑操作”，记录每个修改操作的**逆操作**，主要用于事务的回滚和一致性非锁定读（MVCC）。
 
 #### 9.1.3 Redo日志
+
+InnoDB引擎事务采用的是WAL(Write-Ahead logging)技术，思想就是先写日志，再写磁盘，只有日志写成功，才算事务提交成功，这里的日志就是redo日志。当服务器宕机时，就算内存中的数据未同步到磁盘，当服务器重启后，通过redo log来恢复，保证了持久性。
 
 1. Redo日志的组成
    
@@ -335,11 +439,23 @@ MySQL支持的4种隔离级别：
    - 1，每次提交时，都会进行刷盘（默认值）
    - 2，每次事务提交时，都会把redo log buffer 中的内容提交到page cache，不进行同步，由os决定何时同步到磁盘
 
+4. redo日志的优点：
+   1. 降低了刷盘频率
+   2. redo日志占用的空间非常小
+   3. redo日志是顺序写入磁盘的
+   4. 事务执行过程中，redo日志会不断记录。
+   5. redo log和bin log的区别，redo log是`存储引擎层`实现的，而bin log是`数据库层`实现的。假设一个事务对某张表插入了10万行数据，则redo log就会在执行了顺序地记录10条日志，而bin log不会，知道事务提交，bin log才会记录这次更改写入到bin log文件中。
+
 #### 9.1.4 Undo日志
 
-redo log是事务持久性的保证，undo log是事务原子性的保证，在事务中更新数据的前置操作是先写undo log日志。
+redo log是事务持久性的保证，undo log是`事务原子性的保证`，在事务中`更新数据`的前置操作是`先写undo log日志`。undo log是“逻辑日志”，当数据在回滚时，只是逻辑上回滚，但是物理磁盘上数据的结构可能大相径庭。
 
-undo log是“逻辑日志”，当数据在回滚时，只是逻辑上回滚，但是物理磁盘上数据的结构可能大相径庭。
+此外，undo log会`产生redo log`，也就是undo log的产生会伴随着redo log的产生，这是因为undo log也需要持久性的保护。
+
+作用：
+
++ **回滚数据**，即逻辑回滚。
++ **MVCC**，即多版本并发控制。
 
 ## 9.2 锁机制
 
@@ -347,11 +463,27 @@ undo log是“逻辑日志”，当数据在回滚时，只是逻辑上回滚，
 
 ### 9.2.1 并发问题的解决方案
 
-- 读操作利用多版本并发控制，写操作加锁。
+- **方案一**：读操作利用多版本并发控制，写操作加锁。
   ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/readview.png)
 
-### 9.2.2 锁的分类(锁的粒度)
++ **方案二**：读写操作均加锁方式。
 
-- 表级锁
-- 页级锁
-- 行级锁
+![](http://img.zqqiliyc.love/mysql/202212112047843.png)
+
+### 9.2.2 锁的分类
+
+#### 9.2.2.1 从数据操作层面看
+
++ 读锁/共享锁(Shared Lock)
++ 写锁/独占锁(Exclusive Lock)
+
+#### 9.2.2.2 从锁的粒度看
+
++ 表级锁
++ 行级锁
++ 列级锁
+
+#### 9.2.2.3 加锁方式
+
++ 显示锁
++ 隐式锁
