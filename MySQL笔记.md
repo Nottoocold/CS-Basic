@@ -1,5 +1,3 @@
-[toc]
----
 ## 1. 用户管理及权限管理
 
 命令行登陆参数
@@ -168,11 +166,11 @@ mysql是一个C/S架构。
 
 数据页16KB大小的存储空间可分为7个部分。如下图所示。
 
-![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/mysql%E9%A1%B5%E7%BB%93%E6%9E%84.png)
+![](http://img.zqqiliyc.love/mysql/202304260042492.png)
 
 - File_Header又可被细分如下属性：
 
-![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/file-header.png)
+![](http://img.zqqiliyc.love/mysql/202304260042474.png)
 
 - File_Trailer 文件尾有8字节，前4字节代表页的校验和；后4字节代表页面最后被修改的日志序列位置(LSN)。
 
@@ -281,7 +279,7 @@ mysqladmin -u name -p flush-logs slow // 刷新慢查询日志
 
 EXPLAIN关键字语句输出的各个列的作用说明如下图所示
 
-![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/explain.png)
+![](http://img.zqqiliyc.love/mysql/202304260043482.png)
 
 - id如果相同可以认为是一组，从上往下顺序执行
 
@@ -426,15 +424,16 @@ MySQL支持的4种**隔离级别**：
 InnoDB引擎事务采用的是WAL(Write-Ahead logging)技术，思想就是先写日志，再写磁盘，只有日志写成功，才算事务提交成功，这里的日志就是redo日志。当服务器宕机时，就算内存中的数据未同步到磁盘，当服务器重启后，通过redo log来恢复，保证了持久性。
 
 1. Redo日志的组成
-   
+
    - 内存层面，MySQL服务器启动时，会申请一片内存空间，称为redo log buffer，可通过系统变量Innodb_log_buffer_size查看该缓冲区的大小（默认16MB）。这片连续的内存空间又被划分为若干连续的redo log block，默认每个512B。
    - 磁盘层面，redo log file，是持久化的。
 
 2. Redo log的刷盘过程
-   ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/redo-log%E7%9A%84%E5%88%B7%E7%9B%98%E8%BF%87%E7%A8%8B.png)
+
+   ![](http://img.zqqiliyc.love/mysql/202304260043736.png)
 
 3. Redo log的刷新策略，系统变量Innodb_flush_log_at_trx_commit，可选值：
-   
+
    - 0，每次事务提交时，不进行刷盘操作。(系统默认master thread 每隔1s同步一次)
    - 1，每次提交时，都会进行刷盘（默认值）
    - 2，每次事务提交时，都会把redo log buffer 中的内容提交到page cache，不进行同步，由os决定何时同步到磁盘
@@ -464,7 +463,7 @@ redo log是事务持久性的保证，undo log是`事务原子性的保证`，�
 ### 9.2.1 并发问题的解决方案
 
 - **方案一**：读操作利用多版本并发控制，写操作加锁。
-  ![](https://raw.githubusercontent.com/Nottoocold/img/main/mysql/readview.png)
+  ![](http://img.zqqiliyc.love/mysql/202304260044260.png)
 
 + **方案二**：读写操作均加锁方式。
 
