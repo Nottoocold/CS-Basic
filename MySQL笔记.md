@@ -12,76 +12,107 @@ mysql -h [hostname|hostip] -P [port] -u [username] -p [password] [schema] -e [sq
 
 创建用户：
 
-- create user 'username'@'hostname' identified by 'password';
+```mysql
+create user 'username'@'hostname' identified by 'password';
+```
 
 修改用户:
 
-- update mysql.use set use = '...' where user and host; flush privileges;
+```mysql
+update mysql.use set use = '...' where user and host; flush privileges;
+```
 
 删除用户:
 
-- drop user user@host; or delete from user where user = '...' and host = '..';
+```mysql
+drop user user@host; or delete from user where user = '...' and host = '..';
+```
 
 修改密码:
 
 - 设置当前用户自己的密码
-  - alter mysql.user user() identified by 'password';
-  - set password='....';
+
+```mysql
+- alter mysql.user user() identified by 'password';
+- set password='....';
+```
+
 - 设置别人的密码
-  - alter mysql.user 'user'@'host' identified by 'password';
-  - set password for 'user'@'host' = 'password';
+
+```mysql
+- alter mysql.user 'user'@'host' identified by 'password';
+- set password for 'user'@'host' = 'password';
+```
 
 手动设置密码过期：
 
-- alter user 'user'@'host' password expire;
-  用户仍然可以登陆数据库，但是不能进行其他操作，除非重新设置了新密码。
-  mysql使用全局变量 default_password_lifetime 默认是0，表示禁用密码过期；可以是正整数，表示N天后密码过期。
+```mysql
+alter user 'user'@'host' password expire;
+```
+
+用户仍然可以登陆数据库，但是不能进行其他操作，除非重新设置了新密码。
+MySQL使用全局变量 default_password_lifetime 默认是0，表示禁用密码过期；可以是正整数，表示N天后密码过期。
 
 ### 1.2 权限管理
 
-查看用户权限:    show grants [for 'user'@'host'];
+查看用户权限
+
+```mysql
+show grants [for 'user'@'host'];
+```
 
 #### 1.2.1 直接赋予权限
 
-- grant 权限1,权限2... on 数据库名.表名 to 'user'@'host' [identified by 'pwd'];
+```mysql
+grant 权限1,权限2... on 数据库名.表名 to 'user'@'host' [identified by 'pwd'];
+```
 
 #### 1.2.2 收回权限
 
-- revoke 权限1,权限2... on 数据库名.表名 from 'user'@'host';
+```mysql
+revoke 权限1,权限2... on 数据库名.表名 from 'user'@'host';
+```
 
 #### 1.2.3 如何管理的
 
-mysql是用一张权限表来控制权限的。mysql数据库，user表，db表，table_priv,column_privi,proc_privi。
+MySQL是用一张权限表来控制权限的。**mysql数据库，user表，db表，table_priv,column_privi,proc_privi**。
 
 #### 1.2.4 角色的创建和使用
 
 角色是对权限的“封装”，将角色赋予给具体的用户。
 
+```mysql
 - create role 'rolename'@'host';
 - grant privileges on schema to role;
+```
 
 对角色的crud与角色的语法大致相同。
 
-将角色的权限赋予给用户：
+将角色的权限赋予给用户
 
-- grant role to user;
+```mysql
+grant role to user;
+```
 
-当角色赋予后，需要**激活**，
+当角色赋予后，需要**激活**
 
-- set default [role_name] all to user1,user2...;
+- ```mysql
+  set default [role_name] all to user1,user2...;
+  ```
+
 - `系统变量activate_all_roles_on_login默认为OFF,set global .. = ON`
 
 #### 1.2.5 启动命令与选项组
 
 ![](http://img.zqqiliyc.love/mysql/202212061845077.png)
 
-## 2. Mysql的逻辑架构
+## 2. MySQL的逻辑架构
 
 - 连接管理-连接层
 - 解析优化-服务层
 - 存储引擎-引擎层
 
-mysql是一个C/S架构。
+MySQL是一个C/S架构。
 
 ## 3. 存储引擎
 
@@ -214,13 +245,17 @@ select * from blog where match(title,content) against('查询字符')
 
 全文索引的是大量数据，最好先添加数据，再创建索引。
 
+```mysql
 - alter table add **[fulltext|unique] index** idx_name (col_name(len)[asc|desc]);
 - create index **[fulltext|unique]** idx_name on **table_name**(col_name(len)[asc|desc]); 
+```
 
 ### 6.3 删除索引
 
+```mysql
 - alter table table_name drop index idx_name;
 - drop index idx_name on table_name;
+```
 
 ### 6.4 索引的设计原则
 
@@ -344,9 +379,9 @@ set optimizer_trace_max_mem_size=1000000;
 
 ### 8.4 排序优化
 + where子句条件加索引可避免全表扫描。
-+ 在order by 子句加索引避免filesort排序。但有些情况下初心filesort不一定就性能低。
++ 在order by 子句加索引避免`filesort`排序。但有些情况下出现`filesort`不一定就性能低。
 + 尽量使用index完成order by排序。如果where和order by后面是相同的列就使用单列索引，否则考虑建立联合索引。
-+ 无法使用index时，对filesort方式进行优化。
++ 无法使用index时，对`filesort`方式进行优化。
   + filesort优化思路：
   + 尝试提高`sort_buffer_size`的大小
   + 尝试提高`max_length_for_sort_data`的大小
@@ -400,10 +435,10 @@ SELECT * FROM stu s WHERE id > 2000000 LIMIT 10;
 
 MySQL支持的4种**隔离级别**：
 
-- ==READ UNCOMMITTED==，解决了脏写。
-- ==READ COMMITTED==，解决了脏写、脏读。
-- ==REPEATABLE READ==，解决脏写、脏读和不可重复读。
-- ==SERIALIZABLE==，串行化，最安全同时也是性能最差。
+- **READ UNCOMMITTED**，解决了脏写。
+- **READ COMMITTED**，解决了脏写、脏读。
+- **REPEATABLE READ**，解决脏写、脏读和不可重复读。
+- **SERIALIZABLE**，串行化，最安全同时也是性能最差。
 
 #### 9.1.2 MySQL的事务日志
 
@@ -416,8 +451,8 @@ MySQL支持的4种**隔离级别**：
 
 + REDO和UNDO都可以视为是一种“恢复”操作。
 
-- Redo Log，由Innodb生成，记录的是“物理级别”上的页修改操作，比如页号，偏移量，数据的变化
-- Undo Log，由Innodb生成，记录的是“逻辑操作”，记录每个修改操作的**逆操作**，主要用于事务的回滚和一致性非锁定读（MVCC）。
+- Redo Log，由InnoDB生成，记录的是“物理级别”上的页修改操作，比如页号，偏移量，数据的变化
+- Undo Log，由InnoDB生成，记录的是“逻辑操作”，记录每个修改操作的**逆操作**，主要用于事务的回滚和一致性非锁定读（MVCC）。
 
 #### 9.1.3 Redo日志
 
